@@ -108,6 +108,28 @@ public class MergingDigest extends AbstractTDigest {
     public static boolean useWeightLimit = true;
 
     /**
+     * Returns the maximum number of centroids that a {@code MergingDigest} with the given
+     * compression will allocate. Used by the constructor for buffer allocation and by
+     * {@link #maxSerializedSizeInBytes(double)} for size computation.
+     *
+     * @param compression the compression parameter (values below 10 are treated as 10)
+     * @return the maximum number of centroids
+     */
+    static int maxCentroidCount(double compression) {
+        if (compression < 10) {
+            compression = 10;
+        }
+        double sizeFudge = 0;
+        if (useWeightLimit) {
+            sizeFudge = 10;
+            if (compression < 30) {
+                sizeFudge += 20;
+            }
+        }
+        return (int) Math.ceil(2 * compression + sizeFudge);
+    }
+
+    /**
      * Allocates a buffer merging t-digest.  This is the normally used constructor that
      * allocates default sized internal arrays.  Other versions are available, but should
      * only be used for special cases.
@@ -154,15 +176,16 @@ public class MergingDigest extends AbstractTDigest {
             compression = 10;
         }
 
+        // default size based on compression (maxCentroidCount is the source of truth)
+        size = Math.max(maxCentroidCount(compression), size);
+
         // the weight limit is too conservative about sizes and can require a bit of extra room
+        // (needed for the post-scaling size readjustment below)
         double sizeFudge = 0;
         if (useWeightLimit) {
             sizeFudge = 10;
             if (compression < 30) sizeFudge += 20;
         }
-
-        // default size
-        size = (int) Math.max(2 * compression + sizeFudge, size);
 
         // default buffer
         if (bufferSize == -1) {
@@ -849,10 +872,7 @@ public class MergingDigest extends AbstractTDigest {
      * @return the maximum serialized size in bytes
      */
     public static int maxSerializedSizeInBytes(double compression) {
-        // Construct a digest to derive the actual centroid capacity from the
-        // constructor's buffer sizing logic, avoiding any formula duplication.
-        int maxCentroids = new MergingDigest(compression).weight.length;
-        return 32 + 16 * maxCentroids;
+        return 32 + 16 * maxCentroidCount(compression);
     }
 
     @Override
