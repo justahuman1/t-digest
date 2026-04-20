@@ -837,6 +837,24 @@ public class MergingDigest extends AbstractTDigest {
         return lastUsedCell * 16 + 32;
     }
 
+    /**
+     * Returns the maximum number of bytes required to serialize a {@code MergingDigest}
+     * with the given compression parameter, regardless of how much data has been added.
+     * This is useful for pre-allocating fixed-size buffers.
+     *
+     * <p>The serialization format (see {@link #asBytes(ByteBuffer)}) uses a 32-byte header
+     * followed by 16 bytes per centroid (8 bytes weight + 8 bytes mean).
+     *
+     * @param compression the compression parameter (values below 10 are treated as 10)
+     * @return the maximum serialized size in bytes
+     */
+    public static int maxSerializedSizeInBytes(double compression) {
+        // Construct a digest to derive the actual centroid capacity from the
+        // constructor's buffer sizing logic, avoiding any formula duplication.
+        int maxCentroids = new MergingDigest(compression).weight.length;
+        return 32 + 16 * maxCentroids;
+    }
+
     @Override
     public int smallByteSize() {
         compress();
