@@ -234,4 +234,41 @@ public class MergingDigestTest extends TDigestTest {
             }
         }
     }
+
+    @Test
+    public void testMaxSerializedSizeInBytes() {
+        // Test across compressions that exercise different sizeFudge paths:
+        // - compression < 10 is clamped to 10 (and < 30 path applies)
+        // - compression < 30 gets sizeFudge = 30
+        // - compression >= 30 gets sizeFudge = 10
+        double[] compressions = {5, 10, 20, 50, 100, 200, 500};
+        for (double compression : compressions) {
+            int maxSize = MergingDigest.maxSerializedSizeInBytes(compression);
+            MergingDigest digest = new MergingDigest(compression);
+
+            // Empty digest should serialize to less than max
+            assertTrue("empty byteSize=" + digest.byteSize() + " exceeds max=" + maxSize
+                    + " for compression=" + compression,
+                digest.byteSize() <= maxSize);
+
+            // Fill the digest to capacity
+            Random random = new Random(42);
+            for (int i = 0; i < 1_000_000; i++) {
+                digest.add(random.nextDouble() * 1000);
+            }
+            digest.compress();
+
+            // Even a fully saturated digest must fit within max
+            assertTrue("byteSize=" + digest.byteSize() + " exceeds max=" + maxSize
+                    + " for compression=" + compression,
+                digest.byteSize() <= maxSize);
+
+            // Verify round-trip works with a max-size buffer
+            ByteBuffer buf = ByteBuffer.allocate(maxSize);
+            digest.asBytes(buf);
+            buf.flip();
+            MergingDigest restored = MergingDigest.fromBytes(buf);
+            assertEquals(digest.size(), restored.size());
+        }
+    }
 }

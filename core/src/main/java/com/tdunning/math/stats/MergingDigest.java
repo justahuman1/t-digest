@@ -108,6 +108,32 @@ public class MergingDigest extends AbstractTDigest {
     public static boolean useWeightLimit = true;
 
     /**
+     * Returns the extra capacity needed when weight limiting is enabled.
+     * Weight limits are slightly conservative, so additional centroid slots are required.
+     */
+    private static double sizeFudge(double compression) {
+        if (!useWeightLimit) {
+            return 0;
+        }
+        return compression < 30 ? 30 : 10;
+    }
+
+    /**
+     * Returns the maximum number of centroids that a {@code MergingDigest} with the given
+     * compression will allocate. Used by the constructor for buffer allocation and by
+     * {@link #maxSerializedSizeInBytes(double)} for size computation.
+     *
+     * @param compression the compression parameter (values below 10 are treated as 10)
+     * @return the maximum number of centroids
+     */
+    static int maxCentroidCount(double compression) {
+        if (compression < 10) {
+            compression = 10;
+        }
+        return (int) Math.ceil(2 * compression + sizeFudge(compression));
+    }
+
+    /**
      * Allocates a buffer merging t-digest.  This is the normally used constructor that
      * allocates default sized internal arrays.  Other versions are available, but should
      * only be used for special cases.
@@ -154,15 +180,12 @@ public class MergingDigest extends AbstractTDigest {
             compression = 10;
         }
 
-        // the weight limit is too conservative about sizes and can require a bit of extra room
-        double sizeFudge = 0;
-        if (useWeightLimit) {
-            sizeFudge = 10;
-            if (compression < 30) sizeFudge += 20;
-        }
+        // default size based on compression (maxCentroidCount is the source of truth)
+        size = Math.max(maxCentroidCount(compression), size);
 
-        // default size
-        size = (int) Math.max(2 * compression + sizeFudge, size);
+        // the weight limit is too conservative about sizes and can require a bit of extra room
+        // (reused below for post-scaling size readjustment)
+        double fudge = sizeFudge(compression);
 
         // default buffer
         if (bufferSize == -1) {
@@ -211,8 +234,8 @@ public class MergingDigest extends AbstractTDigest {
         this.compression = Math.sqrt(scale) * publicCompression;
 
         // changing the compression could cause buffers to be too small, readjust if so
-        if (size < this.compression + sizeFudge) {
-            size = (int) Math.ceil(this.compression + sizeFudge);
+        if (size < this.compression + fudge) {
+            size = (int) Math.ceil(this.compression + fudge);
         }
 
         // ensure enough space in buffer (possibly again)
@@ -835,6 +858,21 @@ public class MergingDigest extends AbstractTDigest {
         // format code, compression(float), buffer-size(int), temp-size(int), #centroids-1(int),
         // then two doubles per centroid
         return lastUsedCell * 16 + 32;
+    }
+
+    /**
+     * Returns the maximum number of bytes required to serialize a {@code MergingDigest}
+     * with the given compression parameter, regardless of how much data has been added.
+     * This is useful for pre-allocating fixed-size buffers.
+     *
+     * <p>The serialization format (see {@link #asBytes(ByteBuffer)}) uses a 32-byte header
+     * followed by 16 bytes per centroid (8 bytes weight + 8 bytes mean).
+     *
+     * @param compression the compression parameter (values below 10 are treated as 10)
+     * @return the maximum serialized size in bytes
+     */
+    public static int maxSerializedSizeInBytes(double compression) {
+        return 32 + 16 * maxCentroidCount(compression);
     }
 
     @Override
