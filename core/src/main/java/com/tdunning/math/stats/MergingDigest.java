@@ -108,6 +108,17 @@ public class MergingDigest extends AbstractTDigest {
     public static boolean useWeightLimit = true;
 
     /**
+     * Returns the extra capacity needed when weight limiting is enabled.
+     * Weight limits are slightly conservative, so additional centroid slots are required.
+     */
+    private static double sizeFudge(double compression) {
+        if (!useWeightLimit) {
+            return 0;
+        }
+        return compression < 30 ? 30 : 10;
+    }
+
+    /**
      * Returns the maximum number of centroids that a {@code MergingDigest} with the given
      * compression will allocate. Used by the constructor for buffer allocation and by
      * {@link #maxSerializedSizeInBytes(double)} for size computation.
@@ -119,14 +130,7 @@ public class MergingDigest extends AbstractTDigest {
         if (compression < 10) {
             compression = 10;
         }
-        double sizeFudge = 0;
-        if (useWeightLimit) {
-            sizeFudge = 10;
-            if (compression < 30) {
-                sizeFudge += 20;
-            }
-        }
-        return (int) Math.ceil(2 * compression + sizeFudge);
+        return (int) Math.ceil(2 * compression + sizeFudge(compression));
     }
 
     /**
@@ -179,14 +183,6 @@ public class MergingDigest extends AbstractTDigest {
         // default size based on compression (maxCentroidCount is the source of truth)
         size = Math.max(maxCentroidCount(compression), size);
 
-        // the weight limit is too conservative about sizes and can require a bit of extra room
-        // (needed for the post-scaling size readjustment below)
-        double sizeFudge = 0;
-        if (useWeightLimit) {
-            sizeFudge = 10;
-            if (compression < 30) sizeFudge += 20;
-        }
-
         // default buffer
         if (bufferSize == -1) {
             // TODO update with current numbers
@@ -234,8 +230,9 @@ public class MergingDigest extends AbstractTDigest {
         this.compression = Math.sqrt(scale) * publicCompression;
 
         // changing the compression could cause buffers to be too small, readjust if so
-        if (size < this.compression + sizeFudge) {
-            size = (int) Math.ceil(this.compression + sizeFudge);
+        double fudge = sizeFudge(this.compression);
+        if (size < this.compression + fudge) {
+            size = (int) Math.ceil(this.compression + fudge);
         }
 
         // ensure enough space in buffer (possibly again)
