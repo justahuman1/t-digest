@@ -183,6 +183,10 @@ public class MergingDigest extends AbstractTDigest {
         // default size based on compression (maxCentroidCount is the source of truth)
         size = Math.max(maxCentroidCount(compression), size);
 
+        // the weight limit is too conservative about sizes and can require a bit of extra room
+        // (reused below for post-scaling size readjustment)
+        double fudge = sizeFudge(compression);
+
         // default buffer
         if (bufferSize == -1) {
             // TODO update with current numbers
@@ -230,7 +234,6 @@ public class MergingDigest extends AbstractTDigest {
         this.compression = Math.sqrt(scale) * publicCompression;
 
         // changing the compression could cause buffers to be too small, readjust if so
-        double fudge = sizeFudge(this.compression);
         if (size < this.compression + fudge) {
             size = (int) Math.ceil(this.compression + fudge);
         }
